@@ -264,24 +264,37 @@ app.post('/api/book', async (req, res) => {
   // If connected to Google Sheet, forward to Google Apps Script
   if (config.googleSheetUrl) {
     try {
-      const response = await fetch(config.googleSheetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'book',
-          date,
-          timeSlot,
-          name: cleanName,
-          email: cleanEmail,
-          bitsId: cleanBitsId,
-          vertical: cleanVertical
-        }),
-        redirect: 'follow'
+      const params = new URLSearchParams({
+        action: 'book',
+        date,
+        timeSlot,
+        name: cleanName,
+        email: cleanEmail,
+        bitsId: cleanBitsId,
+        vertical: cleanVertical
       });
+      const targetUrl = config.googleSheetUrl.includes('?')
+        ? `${config.googleSheetUrl}&${params.toString()}`
+        : `${config.googleSheetUrl}?${params.toString()}`;
 
+      const response = await fetch(targetUrl, { method: 'GET', redirect: 'follow' });
       const rawText = await response.text();
-      const data = JSON.parse(rawText);
-      return res.json(data);
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error('Google Sheet raw booking response:', rawText);
+        return res.status(500).json({
+          success: false,
+          error: 'Google Sheet returned an error: ' + rawText.replace(/<[^>]*>?/gm, '').substring(0, 200)
+        });
+      }
+
+      if (data && data.success) {
+        return res.json(data);
+      } else {
+        return res.status(400).json(data || { success: false, error: 'Failed to book slot on Google Sheet.' });
+      }
     } catch (err) {
       console.error('Failed to book via Google Sheet:', err);
       return res.status(500).json({
@@ -388,23 +401,41 @@ app.post('/api/capacity', async (req, res) => {
 
   if (config.googleSheetUrl) {
     try {
-      const response = await fetch(config.googleSheetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'setCapacity',
-          date,
-          timeSlot,
-          capacity: numCap,
-          adminKey: ADMIN_PASSCODE
-        }),
-        redirect: 'follow'
+      const params = new URLSearchParams({
+        action: 'setCapacity',
+        date,
+        timeSlot,
+        capacity: numCap,
+        adminKey: ADMIN_PASSCODE
       });
+      const targetUrl = config.googleSheetUrl.includes('?')
+        ? `${config.googleSheetUrl}&${params.toString()}`
+        : `${config.googleSheetUrl}?${params.toString()}`;
+
+      const response = await fetch(targetUrl, { method: 'GET', redirect: 'follow' });
       const rawText = await response.text();
-      const data = JSON.parse(rawText);
-      return res.json(data);
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error('Google Sheet raw setCapacity response:', rawText);
+        return res.status(500).json({
+          success: false,
+          error: 'Google Sheet returned an error: ' + rawText.replace(/<[^>]*>?/gm, '').substring(0, 200)
+        });
+      }
+
+      if (data && data.success) {
+        return res.json(data);
+      } else {
+        return res.status(400).json(data || { success: false, error: 'Failed to update capacity on Google Sheet.' });
+      }
     } catch (err) {
       console.error('Failed to update capacity in Google Sheet:', err);
+      return res.status(500).json({
+        success: false,
+        error: `Google Sheet error: ${err.message}`
+      });
     }
   }
 
@@ -415,7 +446,9 @@ app.post('/api/capacity', async (req, res) => {
 
   res.json({
     success: true,
-    message: `Updated capacity for ${timeSlot} on ${date} to ${numCap} slots.`
+    message: numCap > 0
+      ? `Updated capacity for ${timeSlot} on ${date} to ${numCap} slots.`
+      : `Closed slot ${timeSlot} on ${date}.`
   });
 });
 

@@ -1,36 +1,45 @@
 /**
  * ===================================================================
- * Multi-Capacity Calendar Booking System - Google Apps Script Backend
+ * BGCC Slot Booking System - Google Apps Script Backend
  * ===================================================================
  * 
- * Instructions:
+ * Deployment Checklist:
  * 1. Open your Google Sheet.
- * 2. Click "Extensions" > "Apps Script".
- * 3. Delete any default code in Code.gs and paste this entire file.
- * 4. Click "Deploy" > "New deployment".
- * 5. Select type: "Web app".
- * 6. Configuration:
- *    - Description: "Multi-Capacity Booking API"
- *    - Execute as: "Me"
- *    - Who has access: "Anyone"
- * 7. Click "Deploy" and authorize permissions if prompted.
- * 8. Copy the generated Web App URL and paste it into the Calendar Booking App settings!
+ * 2. Extensions > Apps Script > Paste this entire file into Code.gs.
+ * 3. Click "Deploy" > "Manage deployments" > Edit (pencil) > New version > Deploy.
+ *    (Ensure "Execute as" is "Me" and "Who has access" is "Anyone").
  */
 
 const SHEET_SLOTS = "Slots_Config";
 const SHEET_BOOKINGS = "Bookings";
 const ADMIN_PASSCODE = "Bgcc@2026";
 
-// No automatic default slots: all slots must be explicitly added by the admin
-const DEFAULT_SLOTS = [];
+/**
+ * Normalizes any Date object or string (YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY) into YYYY-MM-DD.
+ */
+function normalizeDateStr(d, timeZone) {
+  if (!d) return "";
+  if (d instanceof Date) {
+    return Utilities.formatDate(d, timeZone || Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  const s = String(d).trim();
+  const parts = s.split(/[-/]/);
+  if (parts.length === 3) {
+    if (parts[0].length === 4) { // YYYY-MM-DD
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    } else if (parts[2].length === 4) { // DD-MM-YYYY or DD/MM/YYYY
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+  return s;
+}
 
 /**
- * Ensures the required sheets and headers exist.
+ * Ensures required sheets and headers exist.
  */
 function initSheets() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 1. Slots Config Sheet
   let slotSheet = ss.getSheetByName(SHEET_SLOTS);
   if (!slotSheet) {
     slotSheet = ss.insertSheet(SHEET_SLOTS);
@@ -38,7 +47,6 @@ function initSheets() {
     slotSheet.getRange("A1:D1").setFontWeight("bold").setBackground("#e0e7ff");
   }
 
-  // 2. Bookings Sheet
   let bookingSheet = ss.getSheetByName(SHEET_BOOKINGS);
   if (!bookingSheet) {
     bookingSheet = ss.insertSheet(SHEET_BOOKINGS);
@@ -54,26 +62,19 @@ function initSheets() {
       "Status"
     ]);
     bookingSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#c7d2fe");
-  } else {
-    // If existing sheet has older headers without BitsID / Vertical, ensure header names
-    const headers = bookingSheet.getRange(1, 1, 1, bookingSheet.getLastColumn() || 1).getValues()[0];
-    if (headers.indexOf("BitsID") === -1) {
-      bookingSheet.getRange(1, 5).setValue("BitsID");
-      bookingSheet.getRange(1, 6).setValue("Vertical");
-    }
   }
 }
 
 /**
- * Handle GET requests
- * Public attendees ONLY get slot availability (no attendee info).
- * Admin can fetch all bookings by passing adminKey.
+ * Handles GET requests.
+ * Supports getSlots, getBookings, setCapacity, and book (seamless URL support).
  */
 function doGet(e) {
   try {
     initSheets();
     const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "getSlots";
-    const date = (e && e.parameter && e.parameter.date) ? e.parameter.date : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    const rawDate = (e && e.parameter && e.parameter.date) ? e.parameter.date : "";
+    const date = normalizeDateStr(rawDate || new Date());
     const adminKey = (e && e.parameter && e.parameter.adminKey) ? e.parameter.adminKey : "";
 
     if (action === "test") {
@@ -86,20 +87,39 @@ function doGet(e) {
     }
 
     if (action === "getBookings") {
-      // Secure endpoint: only admin can view bookings list
       if (adminKey !== ADMIN_PASSCODE) {
         return jsonResponse({ success: false, error: "Unauthorized: Invalid admin credentials." });
       }
-      const bookings = getBookingsList();
-      return jsonResponse({ success: true, bookings: bookings });
+      return jsonResponse({ success: true, bookings: getBookingsList() });
     }
 
-    // Default: getSlots (Public view - ONLY returns slot timing and remaining counts)
-    const slots = getSlotsForDate(date);
+    if (action === "setCapacity") {
+      if (adminKey !== ADMIN_PASSCODE) {
+        return jsonResponse({ success: false, error: "Unauthorized: Invalid admin passcode." });
+      }
+      const timeSlot = (e && e.parameter && e.parameter.timeSlot) ? e.parameter.timeSlot.trim() : "";
+      const capacity = Number((e && e.parameter && e.parameter.capacity) || 0);
+      const result = updateSlotCapacity({ date, timeSlot, capacity });
+      return jsonResponse(result);
+    }
+
+    if (action === "book") {
+      const result = processBooking({
+        date: date,
+        timeSlot: (e && e.parameter && e.parameter.timeSlot) ? e.parameter.timeSlot.trim() : "",
+        name: (e && e.parameter && e.parameter.name) ? e.parameter.name.trim() : "",
+        email: (e && e.parameter && e.parameter.email) ? e.parameter.email.trim() : "",
+        bitsId: (e && e.parameter && e.parameter.bitsId) ? e.parameter.bitsId.trim() : "",
+        vertical: (e && e.parameter && e.parameter.vertical) ? e.parameter.vertical.trim() : ""
+      });
+      return jsonResponse(result);
+    }
+
+    // Default: getSlots
     return jsonResponse({
       success: true,
       date: date,
-      slots: slots
+      slots: getSlotsForDate(date)
     });
   } catch (err) {
     return jsonResponse({ success: false, error: err.toString() });
@@ -107,10 +127,9 @@ function doGet(e) {
 }
 
 /**
- * Handle POST requests (Book slot, set capacity, cancel)
+ * Handles POST requests.
  */
 function doPost(e) {
-  // Use ScriptLock to prevent double-booking
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -150,8 +169,8 @@ function doPost(e) {
 }
 
 /**
- * Calculates current slot availability for a date.
- * Strictly returns slot times and numbers, NEVER personal attendee data.
+ * Calculates slot availability for a date.
+ * Only returns slots explicitly configured by admin where capacity > 0.
  */
 function getSlotsForDate(targetDate) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -163,12 +182,7 @@ function getSlotsForDate(targetDate) {
     const slotData = slotSheet.getDataRange().getValues();
     for (let i = 1; i < slotData.length; i++) {
       const row = slotData[i];
-      let rowDate = row[0];
-      if (rowDate instanceof Date) {
-        rowDate = Utilities.formatDate(rowDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-      } else if (typeof rowDate === "string") {
-        rowDate = rowDate.trim();
-      }
+      const rowDate = normalizeDateStr(row[0]);
       const timeSlot = String(row[1]).trim();
       const cap = Number(row[2]);
 
@@ -178,19 +192,13 @@ function getSlotsForDate(targetDate) {
     }
   }
 
-  // Count confirmed bookings for that date
+  // Count confirmed bookings
   const bookedCounts = {};
   if (bookingSheet) {
     const bookingData = bookingSheet.getDataRange().getValues();
     for (let i = 1; i < bookingData.length; i++) {
       const row = bookingData[i];
-      // Headers: BookingID (0), Timestamp (1), Name (2), Email (3), BitsID (4), Vertical (5), Date (6), TimeSlot (7), Status (8)
-      let bDate = row[6];
-      if (bDate instanceof Date) {
-        bDate = Utilities.formatDate(bDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-      } else if (typeof bDate === "string") {
-        bDate = bDate.trim();
-      }
+      const bDate = normalizeDateStr(row[6]);
       const bSlot = String(row[7]).trim();
       const bStatus = String(row[8] || "CONFIRMED").toUpperCase().trim();
 
@@ -201,8 +209,6 @@ function getSlotsForDate(targetDate) {
   }
 
   const result = [];
-  const processedSlots = new Set();
-
   for (const slotName in customCapacities) {
     const capacity = Number(customCapacities[slotName]);
     if (capacity > 0) {
@@ -218,27 +224,23 @@ function getSlotsForDate(targetDate) {
     }
   }
 
-  // Sort slots chronologically
   result.sort((a, b) => a.timeSlot.localeCompare(b.timeSlot));
-
   return result;
 }
 
 /**
- * Atomically checks capacity and records a new booking.
- * Enforces:
- * 1. Required fields: Name, Email, BITS ID, Vertical.
- * 2. Exactly ONE slot per user (checks both BITS ID and Email across all active bookings).
+ * Records a new booking.
  */
 function processBooking(data) {
-  const { date, timeSlot, name, email, bitsId, vertical } = data;
+  const { timeSlot, name, email, bitsId, vertical } = data;
+  const targetDate = normalizeDateStr(data.date);
 
   const cleanEmail = String(email || "").trim().toLowerCase();
   const cleanBitsId = String(bitsId || "").trim().toUpperCase();
   const cleanName = String(name || "").trim();
   const cleanVertical = String(vertical || "").trim();
 
-  if (!date || !timeSlot || !cleanName || !cleanEmail || !cleanBitsId || !cleanVertical) {
+  if (!targetDate || !timeSlot || !cleanName || !cleanEmail || !cleanBitsId || !cleanVertical) {
     return {
       success: false,
       error: "All fields are required: Name, Email ID, BITS ID, and Vertical."
@@ -248,7 +250,7 @@ function processBooking(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const bookingSheet = ss.getSheetByName(SHEET_BOOKINGS);
 
-  // 1. Enforce single booking per user rule
+  // Enforce single booking per user
   if (bookingSheet) {
     const existingData = bookingSheet.getDataRange().getValues();
     for (let i = 1; i < existingData.length; i++) {
@@ -261,35 +263,34 @@ function processBooking(data) {
         if (existingBitsId === cleanBitsId) {
           return {
             success: false,
-            error: `BITS ID "${cleanBitsId}" has already booked a slot (${row[6]} at ${row[7]}). Each attendee can only book one slot.`
+            error: `BITS ID "${cleanBitsId}" has already reserved a slot (${row[6]} at ${row[7]}). Each attendee can only book one slot.`
           };
         }
         if (existingEmail === cleanEmail) {
           return {
             success: false,
-            error: `Email "${cleanEmail}" has already booked a slot (${row[6]} at ${row[7]}). Each attendee can only book one slot.`
+            error: `Email "${cleanEmail}" has already reserved a slot (${row[6]} at ${row[7]}). Each attendee can only book one slot.`
           };
         }
       }
     }
   }
 
-  // 2. Check slot capacity
-  const slots = getSlotsForDate(date);
+  // Check capacity
+  const slots = getSlotsForDate(targetDate);
   const targetSlot = slots.find(s => s.timeSlot === timeSlot);
 
   if (!targetSlot) {
-    return { success: false, error: "Selected time slot is invalid." };
+    return { success: false, error: "Selected time slot is invalid or not open." };
   }
 
   if (targetSlot.remaining < 1) {
     return {
       success: false,
-      error: `Sorry, this time slot (${timeSlot}) is already fully booked.`
+      error: `Sorry, slot ${timeSlot} is already full.`
     };
   }
 
-  // 3. Record booking
   const bookingId = "BK-" + Math.floor(100000 + Math.random() * 900000);
   const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
 
@@ -300,7 +301,7 @@ function processBooking(data) {
     cleanEmail,
     cleanBitsId,
     cleanVertical,
-    date,
+    targetDate,
     timeSlot,
     "CONFIRMED"
   ]);
@@ -315,7 +316,7 @@ function processBooking(data) {
       email: cleanEmail,
       bitsId: cleanBitsId,
       vertical: cleanVertical,
-      date: date,
+      date: targetDate,
       timeSlot: timeSlot,
       timestamp: timestamp
     }
@@ -323,7 +324,7 @@ function processBooking(data) {
 }
 
 /**
- * Fetch all bookings - Admin only
+ * Returns all bookings - Admin only
  */
 function getBookingsList() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -336,10 +337,7 @@ function getBookingsList() {
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     if (!row[0]) continue;
-    let bDate = row[6];
-    if (bDate instanceof Date) {
-      bDate = Utilities.formatDate(bDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    }
+    const bDate = normalizeDateStr(row[6]);
     let bTimestamp = row[1];
     if (bTimestamp instanceof Date) {
       bTimestamp = Utilities.formatDate(bTimestamp, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
@@ -362,34 +360,40 @@ function getBookingsList() {
 }
 
 /**
- * Updates slot capacity - Admin only
+ * Updates slot capacity in Slots_Config.
  */
 function updateSlotCapacity(data) {
-  const { date, timeSlot, capacity, notes = "" } = data;
+  const targetDate = normalizeDateStr(data.date);
+  const timeSlot = String(data.timeSlot || "").trim();
+  const capacity = Number(data.capacity);
+  const notes = data.notes || "";
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_SLOTS);
   const rows = sheet.getDataRange().getValues();
 
   let foundRow = -1;
   for (let i = 1; i < rows.length; i++) {
-    let rDate = rows[i][0];
-    if (rDate instanceof Date) {
-      rDate = Utilities.formatDate(rDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    }
-    if (rDate === date && String(rows[i][1]).trim() === timeSlot) {
+    const rDate = normalizeDateStr(rows[i][0]);
+    if (rDate === targetDate && String(rows[i][1]).trim() === timeSlot) {
       foundRow = i + 1;
       break;
     }
   }
 
   if (foundRow > 0) {
-    sheet.getRange(foundRow, 3).setValue(Number(capacity));
+    sheet.getRange(foundRow, 3).setValue(capacity);
     if (notes) sheet.getRange(foundRow, 4).setValue(notes);
   } else {
-    sheet.appendRow([date, timeSlot, Number(capacity), notes || "Manual update"]);
+    sheet.appendRow([targetDate, timeSlot, capacity, notes || "Set from Admin Portal"]);
   }
 
-  return { success: true, message: `Capacity updated to ${capacity} for ${date} ${timeSlot}` };
+  return {
+    success: true,
+    message: capacity > 0
+      ? `Updated capacity for ${timeSlot} on ${targetDate} to ${capacity} slots.`
+      : `Closed slot ${timeSlot} on ${targetDate}.`
+  };
 }
 
 function jsonResponse(obj) {
