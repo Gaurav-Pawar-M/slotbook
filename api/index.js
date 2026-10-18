@@ -51,19 +51,8 @@ export function sanitizeGoogleSheetUrl(inputUrl) {
   return url;
 }
 
-// Default schedule
-const DEFAULT_SCHEDULE = [
-  { timeSlot: '09:00 - 10:00', capacity: 5 },
-  { timeSlot: '10:00 - 11:00', capacity: 5 },
-  { timeSlot: '11:00 - 12:00', capacity: 8 },
-  { timeSlot: '12:00 - 13:00', capacity: 5 },
-  { timeSlot: '14:00 - 15:00', capacity: 8 },
-  { timeSlot: '15:00 - 16:00', capacity: 8 },
-  { timeSlot: '16:00 - 17:00', capacity: 8 },
-  { timeSlot: '17:00 - 18:00', capacity: 10 }, // 10 slots for 5 to 6
-  { timeSlot: '18:00 - 19:00', capacity: 10 },
-  { timeSlot: '19:00 - 20:00', capacity: 6 }
-];
+// No automatic default slots: all slots must be explicitly added by the admin
+const DEFAULT_SCHEDULE = [];
 
 const localCapacityOverrides = {};
 
@@ -90,18 +79,24 @@ function getLocalSlots(dateStr) {
     }
   });
 
-  return DEFAULT_SCHEDULE.map(item => {
-    const capacity = overrides[item.timeSlot] !== undefined ? overrides[item.timeSlot] : item.capacity;
-    const booked = counts[item.timeSlot] || 0;
-    const remaining = Math.max(0, capacity - booked);
-    return {
-      timeSlot: item.timeSlot,
-      capacity,
-      booked,
-      remaining,
-      isAvailable: remaining > 0
-    };
-  });
+  const slots = [];
+  for (const timeSlot in overrides) {
+    const capacity = overrides[timeSlot];
+    if (capacity > 0) {
+      const booked = counts[timeSlot] || 0;
+      const remaining = Math.max(0, capacity - booked);
+      slots.push({
+        timeSlot,
+        capacity,
+        booked,
+        remaining,
+        isAvailable: remaining > 0
+      });
+    }
+  }
+
+  slots.sort((a, b) => a.timeSlot.localeCompare(b.timeSlot));
+  return slots;
 }
 
 // ==========================================

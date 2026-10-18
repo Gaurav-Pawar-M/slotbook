@@ -21,19 +21,8 @@ const SHEET_SLOTS = "Slots_Config";
 const SHEET_BOOKINGS = "Bookings";
 const ADMIN_PASSCODE = "Bgcc@2026";
 
-// Default recurring schedule if a date doesn't have custom overrides in Slots_Config
-const DEFAULT_SLOTS = [
-  { timeSlot: "09:00 - 10:00", capacity: 5 },
-  { timeSlot: "10:00 - 11:00", capacity: 5 },
-  { timeSlot: "11:00 - 12:00", capacity: 8 },
-  { timeSlot: "12:00 - 13:00", capacity: 5 },
-  { timeSlot: "14:00 - 15:00", capacity: 8 },
-  { timeSlot: "15:00 - 16:00", capacity: 8 },
-  { timeSlot: "16:00 - 17:00", capacity: 8 },
-  { timeSlot: "17:00 - 18:00", capacity: 10 }, // 10 slots for 5 to 6
-  { timeSlot: "18:00 - 19:00", capacity: 10 },
-  { timeSlot: "19:00 - 20:00", capacity: 6 }
-];
+// No automatic default slots: all slots must be explicitly added by the admin
+const DEFAULT_SLOTS = [];
 
 /**
  * Ensures the required sheets and headers exist.
@@ -47,10 +36,6 @@ function initSheets() {
     slotSheet = ss.insertSheet(SHEET_SLOTS);
     slotSheet.appendRow(["Date", "TimeSlot", "MaxCapacity", "Notes"]);
     slotSheet.getRange("A1:D1").setFontWeight("bold").setBackground("#e0e7ff");
-    
-    // Add sample default row for reference
-    const todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-    slotSheet.appendRow([todayStr, "17:00 - 18:00", 10, "5 to 6 PM with 10 slots"]);
   }
 
   // 2. Bookings Sheet
@@ -218,25 +203,9 @@ function getSlotsForDate(targetDate) {
   const result = [];
   const processedSlots = new Set();
 
-  DEFAULT_SLOTS.forEach(defaultItem => {
-    const slotName = defaultItem.timeSlot;
-    processedSlots.add(slotName);
-    const capacity = customCapacities.hasOwnProperty(slotName) ? customCapacities[slotName] : defaultItem.capacity;
-    const booked = bookedCounts[slotName] || 0;
-    const remaining = Math.max(0, capacity - booked);
-
-    result.push({
-      timeSlot: slotName,
-      capacity: capacity,
-      booked: booked,
-      remaining: remaining,
-      isAvailable: remaining > 0
-    });
-  });
-
   for (const slotName in customCapacities) {
-    if (!processedSlots.has(slotName)) {
-      const capacity = customCapacities[slotName];
+    const capacity = Number(customCapacities[slotName]);
+    if (capacity > 0) {
       const booked = bookedCounts[slotName] || 0;
       const remaining = Math.max(0, capacity - booked);
       result.push({
@@ -248,6 +217,9 @@ function getSlotsForDate(targetDate) {
       });
     }
   }
+
+  // Sort slots chronologically
+  result.sort((a, b) => a.timeSlot.localeCompare(b.timeSlot));
 
   return result;
 }

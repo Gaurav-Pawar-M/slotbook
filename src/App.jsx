@@ -593,24 +593,31 @@ export default function App() {
                     onChange={(e) => setCapacitySlot(e.target.value)}
                     className="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:ring-2 focus:ring-indigo-500"
                   >
+                    <option value="08:00 - 09:00">08:00 - 09:00</option>
                     <option value="09:00 - 10:00">09:00 - 10:00</option>
                     <option value="10:00 - 11:00">10:00 - 11:00</option>
                     <option value="11:00 - 12:00">11:00 - 12:00</option>
                     <option value="12:00 - 13:00">12:00 - 13:00</option>
+                    <option value="13:00 - 14:00">13:00 - 14:00</option>
                     <option value="14:00 - 15:00">14:00 - 15:00</option>
                     <option value="15:00 - 16:00">15:00 - 16:00</option>
                     <option value="16:00 - 17:00">16:00 - 17:00</option>
-                    <option value="17:00 - 18:00">17:00 - 18:00 (5 to 6)</option>
+                    <option value="17:00 - 18:00">17:00 - 18:00</option>
                     <option value="18:00 - 19:00">18:00 - 19:00</option>
                     <option value="19:00 - 20:00">19:00 - 20:00</option>
+                    <option value="20:00 - 21:00">20:00 - 21:00</option>
+                    <option value="21:00 - 22:00">21:00 - 22:00</option>
+                    <option value="22:00 - 23:00">22:00 - 23:00</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Capacity (Max Slots)</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Capacity <span className="text-slate-400 font-normal">(0 = Close slot)</span>
+                  </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     max="100"
                     required
                     value={capacityValue}
@@ -625,7 +632,7 @@ export default function App() {
                     disabled={updatingCapacity}
                     className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm transition shadow-sm"
                   >
-                    {updatingCapacity ? 'Saving...' : 'Update Capacity'}
+                    {updatingCapacity ? 'Saving...' : 'Set Capacity'}
                   </button>
                 </div>
               </form>
