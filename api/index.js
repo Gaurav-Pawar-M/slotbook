@@ -14,17 +14,20 @@ const CONFIG_FILE = path.join(__dirname, '..', 'config.json');
 app.use(cors());
 app.use(express.json());
 
+const PERMANENT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbz_zM--uO3xakGO61E34G-Wn7jlReIezQcYrx3eVp4UDDcTMm8uhnLV_vfbj5tb9TOh/exec';
+
 // Persistent config helper
 function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      if (data && data.googleSheetUrl) return data;
     }
   } catch (e) {
-    // Read-only filesystem in some serverless environments, fallback to env
+    // Read-only filesystem in some serverless environments, fallback to env/permanent
   }
   return {
-    googleSheetUrl: process.env.GOOGLE_SHEET_WEBHOOK_URL || ''
+    googleSheetUrl: process.env.GOOGLE_SHEET_WEBHOOK_URL || PERMANENT_SHEET_URL
   };
 }
 
