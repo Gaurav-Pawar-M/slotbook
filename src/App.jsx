@@ -329,12 +329,14 @@ export default function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-100">
-              <CalendarIcon className="w-5 h-5" />
-            </div>
+            <img
+              src="/BGCC_LOGO.png"
+              alt="BGCC Logo"
+              className="h-10 sm:h-11 w-auto rounded-lg object-contain shadow-xs"
+            />
             <div>
               <div className="flex items-center space-x-2">
-                <h1 className="font-bold text-lg text-slate-900 tracking-tight">SlotBook</h1>
+                <h1 className="font-bold text-base sm:text-lg text-slate-900 tracking-tight">BGCC</h1>
                 {isAdminLoggedIn && (
                   <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-300 flex items-center space-x-1">
                     <ShieldAlert className="w-3 h-3" />
@@ -343,7 +345,7 @@ export default function App() {
                 )}
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                {isAdminLoggedIn ? 'Admin Portal - Bookings & Capacity Oversight' : 'Single Slot Reservation Portal'}
+                {isAdminLoggedIn ? 'Admin Portal - Bookings & Capacity Oversight' : 'BITS Goa Consulting Club • Slot Booking'}
               </p>
             </div>
           </div>
@@ -1071,7 +1073,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
-          <span>SlotBook • Dynamic Multi-Capacity Calendar Reservation System</span>
+          <span>BGCC • BITS Goa Consulting Club Interview Reservation System</span>
           <span>Attendee Privacy Guaranteed (Records visible only to Admin)</span>
         </div>
       </footer>
