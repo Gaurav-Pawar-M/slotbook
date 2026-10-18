@@ -954,11 +954,11 @@ export default function App() {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Admin Passcode</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Admin Password</label>
                 <input
                   type="password"
                   required
-                  placeholder="Enter passcode (default: Bgcc@2026)"
+                  placeholder="Enter password"
                   value={adminPasscodeInput}
                   onChange={(e) => setAdminPasscodeInput(e.target.value)}
                   className="w-full text-sm bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
